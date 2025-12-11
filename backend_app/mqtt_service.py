@@ -147,12 +147,19 @@ class MQTTService:
 
     def connect(self):
         try:
-            self.client.username_pw_set(settings.MQTT_USERNAME, settings.MQTT_PASSWORD)
-            self.client.tls_set()  # Enable TLS for port 8883
+            # Chỉ set user/pass nếu trong settings có giá trị (Localhost thường để None)
+            if settings.MQTT_USERNAME and settings.MQTT_PASSWORD:
+                self.client.username_pw_set(settings.MQTT_USERNAME, settings.MQTT_PASSWORD)
+            
+            # --- QUAN TRỌNG: Đã XÓA dòng self.client.tls_set() ---
+            
+            # Kết nối vào Broker
             self.client.connect(settings.MQTT_BROKER, settings.MQTT_PORT, 60)
             self.client.loop_start()
+            print(f"✅ [MQTT] Connected to {settings.MQTT_BROKER}:{settings.MQTT_PORT}")
+            
         except Exception as e:
-            print(f"[MQTT] Could not connect to Broker: {e}")
+            print(f"❌ [MQTT] Could not connect to Broker: {e}")
 
     def publish_command(self, payload: dict):
         if not self.connected:

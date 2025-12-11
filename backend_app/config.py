@@ -8,11 +8,19 @@ class Settings:
     # Database
     DATABASE_URL = "sqlite:///./smartlight.db"
     
-    # MQTT
-    MQTT_BROKER = "w187ffa1.ala.eu-central-1.emqxsl.com"
-    MQTT_PORT = 8883
-    MQTT_USERNAME = "phucnd"
-    MQTT_PASSWORD = "phucnd"
+    # --- CẤU HÌNH MQTT (LOCAL) ---
+    MQTT_BROKER = "localhost"   # Chạy trên cùng máy tính
+    MQTT_PORT = 1883            # Port TCP tiêu chuẩn (QUAN TRỌNG: Không phải 8883)
+    
+    # Với Local EMQX mặc định, user/pass thường không bắt buộc.
+    # Để None (hoặc chuỗi rỗng) để kết nối kiểu anonymous.
+    MQTT_USERNAME = None        
+    MQTT_PASSWORD = None        
+    
+    # Nếu bạn muốn dùng user mặc định của dashboard để test thì bỏ comment 2 dòng dưới:
+    # MQTT_USERNAME = "admin"
+    # MQTT_PASSWORD = "public"  (hoặc pass mới bạn đã đổi)
+
     MQTT_TOPIC_COMMAND = "iot/light/command"
     MQTT_TOPIC_STATUS = "iot/light/status"
     MQTT_CLIENT_ID = "fastapi_server_client"
