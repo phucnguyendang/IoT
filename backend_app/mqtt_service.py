@@ -83,8 +83,8 @@ class MQTTService:
 
                 # === 3. Xử lý logic tự động trên Backend ===
                 # Chỉ xử lý nếu đang ở chế độ AUTO
-                if device.is_auto_mode:
-                    self._process_auto_logic(db, device)
+                # if device.is_auto_mode:
+                #     self._process_auto_logic(db, device)
 
             except Exception as db_err:
                 print(f"[MQTT] Database Error: {db_err}")
@@ -97,53 +97,61 @@ class MQTTService:
 
     def _process_auto_logic(self, db, device: DeviceState):
         """
-        Logic tự động:
-        - Nếu sensor_value < light_threshold_low VÀ đèn đang tắt → Bật đèn
-        - Nếu sensor_value > light_threshold_high VÀ đèn đang bật → Tắt đèn
+        LOGIC TỰ ĐỘNG (SỬA ĐỔI):
+        - Server đóng vai trò "Giám sát viên".
+        - Sensor thấp (Trời sáng) -> Server ra lệnh TẮT HẲN.
+        - Sensor cao (Trời tối) -> Server ra lệnh BẬT CHẾ ĐỘ AUTO (để ESP32 tự dimming).
         """
         try:
-            # Lấy cài đặt ngưỡng
+            # 1. Lấy cài đặt ngưỡng từ Database
             user_settings = db.query(UserSettings).filter(UserSettings.id == 1).first()
             if not user_settings:
-                # Tạo cài đặt mặc định nếu chưa có
+                # Tạo mặc định nếu chưa có (Dựa trên log thực tế của bạn: 28 là sáng, 1400 là tối)
                 user_settings = UserSettings(
                     id=1,
-                    light_threshold_low=300,
-                    light_threshold_high=700,
-                    auto_brightness=80
+                    light_threshold_low=300,    # Dưới 300 là SÁNG QUÁ -> Cần tắt đèn
+                    light_threshold_high=1200,  # Trên 1200 là TỐI -> Cần bật Auto
+                    auto_brightness=80          # (Thông số này giờ chỉ để tham khảo hoặc lưu trữ)
                 )
                 db.add(user_settings)
                 db.commit()
             
+            # 2. Gán biến cho dễ đọc
             sensor_value = device.sensor_value
-            threshold_low = user_settings.light_threshold_low
-            threshold_high = user_settings.light_threshold_high
-            auto_brightness = user_settings.auto_brightness
+            threshold_turn_off = user_settings.light_threshold_low   # Ngưỡng sáng (để tắt)
+            threshold_turn_on = user_settings.light_threshold_high   # Ngưỡng tối (để bật Auto)
 
-            print(f"[AUTO] Sensor: {sensor_value}, Low: {threshold_low}, High: {threshold_high}, Light is {'ON' if device.is_on else 'OFF'}")
+            print(f"[AUTO CHECK] Sensor: {sensor_value} | Tắt nếu < {threshold_turn_off} | Bật Auto nếu > {threshold_turn_on}")
 
-            # Logic: Ánh sáng yếu (sensor thấp) → Bật đèn
-            if sensor_value < threshold_low and not device.is_on:
-                print(f"[AUTO] Sensor ({sensor_value}) < Threshold Low ({threshold_low}) → Turning ON light!")
-                self.publish_command({
-                    "type": "MANUAL",
-                    "state": "ON",
-                    "brightness": auto_brightness
-                })
-            
-            # Logic: Ánh sáng mạnh (sensor cao) → Tắt đèn
-            elif sensor_value > threshold_high and device.is_on:
-                print(f"[AUTO] Sensor ({sensor_value}) > Threshold High ({threshold_high}) → Turning OFF light!")
+            # === TRƯỜNG HỢP 1: TRỜI SÁNG -> TẮT ĐÈN ===
+            # Điều kiện: (Sensor nhỏ hơn ngưỡng thấp) VÀ (Đèn đang bật)
+            if sensor_value < threshold_turn_off and device.is_on:
+                print(f"☀️ [AUTO] Trời sáng (Sensor {sensor_value} < {threshold_turn_off}) -> Gửi lệnh TẮT ĐÈN.")
                 self.publish_command({
                     "type": "MANUAL",
                     "state": "OFF",
                     "brightness": 0
                 })
+            
+            # === TRƯỜNG HỢP 2: TRỜI TỐI -> BẬT CHẾ ĐỘ AUTO ===
+            # Điều kiện: (Sensor lớn hơn ngưỡng cao) VÀ (Đèn đang tắt HOẶC Đang không ở chế độ Auto)
+            # Tại sao? Vì nếu đèn đang sáng và đang ở Auto rồi thì cứ để ESP32 tự chỉnh, Server không cần can thiệp nữa.
+            elif sensor_value > threshold_turn_on and (not device.is_on or not device.is_auto_mode):
+                print(f"🌙 [AUTO] Trời tối (Sensor {sensor_value} > {threshold_turn_on}) -> Kích hoạt ESP32 AUTO MODE.")
+                
+                # Gửi lệnh kích hoạt chế độ Auto cho ESP32
+                # ESP32 sẽ tự tính toán map(sensor) ra độ sáng phù hợp
+                self.publish_command({
+                    "type": "AUTO",
+                    "enable": True
+                })
+
+            # === TRƯỜNG HỢP 3: VÙNG GIỮA (HYSTERESIS) ===
             else:
-                print(f"[AUTO] No action needed. Sensor value in normal range or state already correct.")
+                print(f"⚖️ [AUTO] Giữ nguyên trạng thái (Sensor nằm trong vùng đệm hoặc trạng thái đã đúng).")
 
         except Exception as e:
-            print(f"[AUTO] Error in auto logic: {e}")
+            print(f"❌ [AUTO] Lỗi logic tự động: {e}")
 
     def connect(self):
         try:
