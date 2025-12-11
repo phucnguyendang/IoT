@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IoT Smart Light - Dashboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="styles.css">
+    <style>
+        /* Thêm CSS inline nhỏ để căn chỉnh lại bố cục cho đẹp hơn */
+        .dashboard-main {
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 1.5rem;
+        }
+
+        /* Chia cột cho hàng trên cùng (Status + Control) */
+        .top-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr; /* Chia đôi màn hình */
+            gap: 1.5rem;
+        }
+
+        /* Trên điện thoại thì xếp chồng lên nhau */
+        @media (max-width: 768px) {
+            .top-row {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="login-screen" class="screen">
+        <div class="login-container">
+            <div class="login-header">
+                <div class="logo">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color: #ffaa00;">
+                        <path d="M9 18h6M10 22h4M12 2v1M12 7a4 4 0 014 4v2a2 2 0 01-2 2h-4a2 2 0 01-2-2v-2a4 4 0 014-4z"/>
+                    </svg>
+                </div>
+                <h1>IoT Smart Light</h1>
+                <p class="subtitle">Hệ thống điều khiển đèn thông minh</p>
+            </div>
+            <form id="login-form">
+                <div class="input-group">
+                    <label for="username">Tên đăng nhập</label>
+                    <input type="text" id="username" name="username" required autocomplete="username" placeholder="admin">
+                </div>
+                <div class="input-group">
+                    <label for="password">Mật khẩu</label>
+                    <input type="password" id="password" name="password" required autocomplete="current-password" placeholder="••••••">
+                </div>
+                <button type="submit" class="btn-primary" id="login-btn">
+                    <span>Đăng nhập</span>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M5 12h14M12 5l7 7-7 7"/>
+                    </svg>
+                </button>
+                <div id="login-error" class="error-message"></div>
+            </form>
+        </div>
+    </div>
+
+    <div id="dashboard-screen" class="screen hidden" style="display: none;">
+        <header class="dashboard-header">
+            <div class="header-left">
+                <div class="logo-small">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M9 18h6M10 22h4M12 2v1M12 7a4 4 0 014 4v2a2 2 0 01-2 2h-4a2 2 0 01-2-2v-2a4 4 0 014-4z"/>
+                    </svg>
+                </div>
+                <h1>Smart Light Dashboard</h1>
+            </div>
+            <div class="header-right">
+                <span id="connection-status" class="status-badge offline">
+                    <span class="status-dot"></span>
+                    <span class="status-text">Đang kết nối...</span>
+                </span>
+                <button id="logout-btn" class="btn-icon" title="Đăng xuất">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"/>
+                    </svg>
+                </button>
+            </div>
+        </header>
+
+        <main class="dashboard-main">
+            <div class="top-row">
+                
+                <section class="card status-card">
+                    <div class="card-header">
+                        <h2>Trạng thái thiết bị</h2>
+                        <span id="last-updated" class="timestamp">--:--:--</span>
+                    </div>
+                    <div class="status-content">
+                        <div class="light-visual" id="light-visual">
+                            <div class="bulb-container">
+                                <svg viewBox="0 0 100 140" class="bulb-svg">
+                                    <defs>
+                                        <filter id="glow">
+                                            <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
+                                            <feMerge>
+                                                <feMergeNode in="coloredBlur"/>
+                                                <feMergeNode in="SourceGraphic"/>
+                                            </feMerge>
+                                        </filter>
+                                    </defs>
+                                    <ellipse cx="50" cy="50" rx="35" ry="40" class="bulb-glass" filter="url(#glow)"/>
+                                    <rect x="35" y="85" width="30" height="8" rx="2" class="bulb-base"/>
+                                    <rect x="38" y="93" width="24" height="6" rx="2" class="bulb-base"/>
+                                    <rect x="41" y="99" width="18" height="6" rx="2" class="bulb-base"/>
+                                </svg>
+                            </div>
+                            <div class="brightness-display">
+                                <span class="brightness-value" id="brightness-display">0</span>
+                                <span class="brightness-unit">%</span>
+                            </div>
+                        </div>
+
+                        <div class="status-info">
+                            <div class="info-row">
+                                <span class="info-label">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+                                    Nguồn điện
+                                </span>
+                                <span class="info-value" id="power-status">--</span>
+                            </div>
+                            <div class="info-row">
+                                <span class="info-label">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                                    Chế độ
+                                </span>
+                                <span class="info-value" id="mode-status">--</span>
+                            </div>
+                            <div class="info-row">
+                                <span class="info-label">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+                                    Cảm biến
+                                </span>
+                                <span class="info-value" id="sensor-status">--</span>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="card control-card">
+                    <div class="card-header">
+                        <h2>Bảng điều khiển</h2>
+                    </div>
+                    <div class="control-content">
+                        <div class="control-group power-group">
+                            <label class="control-label">Công tắc nguồn</label>
+                            <button id="power-toggle" class="power-btn off">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                                    <path d="M18.36 6.64a9 9 0 1 1-12.73 0"></path>
+                                    <line x1="12" y1="2" x2="12" y2="12"></line>
+                                </svg>
+                            </button>
+                        </div>
+
+                        <div class="control-group">
+                            <label class="control-label">
+                                <span>Chế độ Tự động</span>
+                                <span class="sub-label">Cảm biến tự điều chỉnh</span>
+                            </label>
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="auto-toggle">
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </div>
+
+                        <div class="divider"></div>
+
+                        <div class="control-group slider-group">
+                            <label class="control-label">
+                                Điều chỉnh độ sáng
+                                <span id="brightness-label" class="value-label">0%</span>
+                            </label>
+                            <div class="slider-container">
+                                <input type="range" id="brightness-slider" min="0" max="100" value="0" class="slider">
+                                <div class="slider-track">
+                                    <div class="slider-fill" id="slider-fill"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+            </div>
+
+            <section class="card chart-card">
+                <div class="card-header">
+                    <h2>Biểu đồ hoạt động</h2>
+                    <div class="chart-controls">
+                        <select id="chart-hours" class="select-input">
+                            <option value="1">1 giờ qua</option>
+                            <option value="6">6 giờ qua</option>
+                            <option value="24" selected>24 giờ qua</option>
+                        </select>
+                        <button id="refresh-chart-btn" class="btn-icon" title="Làm mới dữ liệu">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M23 4v6h-6M1 20v-6h6"/>
+                                <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+                <div class="chart-container" style="height: 350px;">
+                    <canvas id="sensor-chart"></canvas>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <div id="toast-container"></div>
+
+    <script src="app.js"></script>
+</body>
+</html>
