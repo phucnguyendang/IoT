@@ -1,13 +1,15 @@
 /**
- * IoT Smart Light - Frontend Application (Clean Version)
+ * IoT Smart Light - Frontend Application (Final Stable Version)
  * ======================================
  */
 
 // ============ Configuration ============
 const CONFIG = {
     API_URL: 'http://127.0.0.1:8000',
-    POLL_INTERVAL: 3000, // Cập nhật trạng thái mỗi 3 giây
-    CHART_REFRESH_INTERVAL: 30000, // Cập nhật biểu đồ mỗi 30 giây
+    POLL_INTERVAL: 2000, // Cập nhật trạng thái mỗi 2 giây
+    CHART_REFRESH_INTERVAL: 30000,
+    // QUAN TRỌNG: Thời gian chờ phản hồi từ ESP32 (tăng lên 4s để tránh nhảy số)
+    UPDATE_DELAY: 4000 
 };
 
 // ============ State Management ============
@@ -22,84 +24,54 @@ const state = {
     },
     pollInterval: null,
     chartInstance: null,
+    
+    // Cờ chặn cập nhật khi người dùng đang thao tác
+    isInteracting: false, 
+    interactionTimeout: null
 };
 
 // ============ DOM Elements ============
 const elements = {
-    // Screens
     loginScreen: document.getElementById('login-screen'),
     dashboardScreen: document.getElementById('dashboard-screen'),
-    
-    // Login Form
     loginForm: document.getElementById('login-form'),
     usernameInput: document.getElementById('username'),
     passwordInput: document.getElementById('password'),
     loginError: document.getElementById('login-error'),
     loginBtn: document.getElementById('login-btn'),
-    
-    // Header
     connectionStatus: document.getElementById('connection-status'),
     logoutBtn: document.getElementById('logout-btn'),
-    
-    // Dashboard Display Info
     lightVisual: document.getElementById('light-visual'),
     brightnessDisplay: document.getElementById('brightness-display'),
     powerStatus: document.getElementById('power-status'),
     modeStatus: document.getElementById('mode-status'),
     sensorStatus: document.getElementById('sensor-status'),
     lastUpdated: document.getElementById('last-updated'),
-    
-    // Controls (Các nút điều khiển chính)
     powerToggle: document.getElementById('power-toggle'),
     brightnessSlider: document.getElementById('brightness-slider'),
     brightnessLabel: document.getElementById('brightness-label'),
     sliderFill: document.getElementById('slider-fill'),
     autoToggle: document.getElementById('auto-toggle'),
-    
-    // Chart Elements
     chartHours: document.getElementById('chart-hours'),
     refreshChartBtn: document.getElementById('refresh-chart-btn'),
     sensorChart: document.getElementById('sensor-chart'),
-    
-    // Toast Notification
     toastContainer: document.getElementById('toast-container'),
 };
 
 // ============ API Functions ============
 async function apiRequest(endpoint, options = {}) {
     const url = `${CONFIG.API_URL}${endpoint}`;
-    const headers = {
-        'Content-Type': 'application/json',
-        ...options.headers,
-    };
-    
-    if (state.token) {
-        headers['Authorization'] = `Bearer ${state.token}`;
-    }
+    const headers = { 'Content-Type': 'application/json', ...options.headers };
+    if (state.token) headers['Authorization'] = `Bearer ${state.token}`;
     
     try {
-        const response = await fetch(url, {
-            ...options,
-            headers,
-        });
-        
-        if (response.status === 401) {
-            logout();
-            throw new Error('Phiên đăng nhập đã hết hạn');
-        }
-        
+        const response = await fetch(url, { ...options, headers });
+        if (response.status === 401) { logout(); throw new Error('Phiên đăng nhập hết hạn'); }
         const data = await response.json();
-        
-        if (!response.ok) {
-            throw new Error(data.detail || 'Có lỗi xảy ra');
-        }
-        
+        if (!response.ok) throw new Error(data.detail || 'Lỗi hệ thống');
         return data;
     } catch (error) {
-        if (error.name === 'TypeError') {
-            setConnectionStatus(false);
-            throw new Error('Không thể kết nối đến server');
-        }
+        if (error.name === 'TypeError') { setConnectionStatus(false); throw new Error('Mất kết nối Server'); }
         throw error;
     }
 }
@@ -108,47 +80,14 @@ async function login(username, password) {
     const formData = new URLSearchParams();
     formData.append('username', username);
     formData.append('password', password);
-    
-    const response = await fetch(`${CONFIG.API_URL}/token`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: formData,
-    });
-    
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.detail || 'Đăng nhập thất bại');
-    return data;
+    return await apiRequest('/token', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: formData });
 }
 
-async function verifyToken(token) {
-    try {
-        const response = await fetch(`${CONFIG.API_URL}/api/device/status`, {
-            headers: {
-                'Authorization': `Bearer ${token}`,
-                'Content-Type': 'application/json',
-            },
-        });
-        return response.ok;
-    } catch {
-        return false;
-    }
-}
-
-async function getDeviceStatus() {
-    return await apiRequest('/api/device/status');
-}
+async function getDeviceStatus() { return await apiRequest('/api/device/status'); }
 
 async function controlDevice(action, options = {}) {
-    return await apiRequest('/api/device/control', {
-        method: 'POST',
-        body: JSON.stringify({
-            action,
-            ...options,
-        }),
-    });
+    return await apiRequest('/api/device/control', { method: 'POST', body: JSON.stringify({ action, ...options }) });
 }
-
-// Đã XÓA hàm getSettings và updateSettings vì không còn dùng nữa
 
 async function getSensorHistory(hours = 24) {
     return await apiRequest(`/api/device/history?hours=${hours}&limit=500`);
@@ -156,150 +95,63 @@ async function getSensorHistory(hours = 24) {
 
 // ============ UI Update Functions ============
 function showScreen(screenName) {
-    if (screenName === 'login') {
-        elements.loginScreen.style.display = 'flex';
-        elements.loginScreen.classList.remove('hidden');
-        elements.dashboardScreen.style.display = 'none';
-        elements.dashboardScreen.classList.add('hidden');
-    } else if (screenName === 'dashboard') {
-        elements.loginScreen.style.display = 'none';
-        elements.loginScreen.classList.add('hidden');
-        elements.dashboardScreen.style.display = 'block';
-        elements.dashboardScreen.classList.remove('hidden');
-    }
+    elements.loginScreen.style.display = (screenName === 'login') ? 'flex' : 'none';
+    elements.dashboardScreen.style.display = (screenName === 'dashboard') ? 'block' : 'none';
 }
 
 function setConnectionStatus(connected) {
     state.isConnected = connected;
-    elements.connectionStatus.classList.toggle('online', connected);
-    elements.connectionStatus.classList.toggle('offline', !connected);
-    elements.connectionStatus.querySelector('.status-text').textContent = 
-        connected ? 'Đã kết nối' : 'Mất kết nối';
+    elements.connectionStatus.className = `status-badge ${connected ? 'online' : 'offline'}`;
+    elements.connectionStatus.querySelector('.status-text').textContent = connected ? 'Đã kết nối' : 'Mất kết nối';
 }
 
 function updateDeviceUI() {
+    // === CHỐNG NHẢY SỐ ===
+    // Nếu người dùng đang thao tác hoặc vừa thao tác xong -> KHÔNG cập nhật từ Server
+    if (state.isInteracting) return;
+
     const { is_on, brightness, sensor_value, is_auto_mode } = state.deviceStatus;
     
-    // Light visual
+    // Cập nhật trạng thái đèn
     elements.lightVisual.classList.toggle('on', is_on);
     elements.brightnessDisplay.textContent = brightness;
     
-    // Power status
     elements.powerStatus.textContent = is_on ? 'Đang bật' : 'Đang tắt';
     elements.powerStatus.className = `info-value ${is_on ? 'on' : 'off'}`;
     
-    // Mode status
     elements.modeStatus.textContent = is_auto_mode ? 'Tự động' : 'Thủ công';
     elements.modeStatus.className = `info-value ${is_auto_mode ? 'auto' : 'manual'}`;
     
-    // Sensor value
     elements.sensorStatus.textContent = sensor_value;
     
-    // Power button
+    // Cập nhật nút nguồn và slider
     elements.powerToggle.classList.toggle('on', is_on);
     
-    // Brightness slider (Cập nhật vị trí slider theo thực tế)
+    // Chỉ cập nhật slider khi người dùng KHÔNG chạm vào nó
     elements.brightnessSlider.value = brightness;
     elements.brightnessLabel.textContent = `${brightness}%`;
     elements.sliderFill.style.width = `${brightness}%`;
     
-    // Auto toggle
     elements.autoToggle.checked = is_auto_mode;
-    
-    // Đã XÓA: updateSensorIndicator (vì không còn thanh ngưỡng)
 }
 
 function updateLastUpdated() {
-    const now = new Date();
-    elements.lastUpdated.textContent = now.toLocaleTimeString('vi-VN');
+    elements.lastUpdated.textContent = new Date().toLocaleTimeString('vi-VN');
 }
 
-// ============ Chart Functions (Giữ nguyên để xem lịch sử) ============
-function initChart() {
-    if (state.chartInstance) {
-        state.chartInstance.destroy();
-    }
-    
-    const ctx = elements.sensorChart.getContext('2d');
-    
-    state.chartInstance = new Chart(ctx, {
-        type: 'line',
-        data: {
-            labels: [],
-            datasets: [
-                {
-                    label: 'Cảm biến ánh sáng',
-                    data: [],
-                    borderColor: '#00d4ff',
-                    backgroundColor: 'rgba(0, 212, 255, 0.1)',
-                    fill: true,
-                    tension: 0.4,
-                    pointRadius: 0,
-                    borderWidth: 2,
-                },
-                {
-                    label: 'Độ sáng đèn (%)',
-                    data: [],
-                    borderColor: '#ffaa00',
-                    backgroundColor: 'rgba(255, 170, 0, 0.1)',
-                    fill: true,
-                    tension: 0.4,
-                    pointRadius: 0,
-                    borderWidth: 2,
-                    yAxisID: 'y1',
-                },
-            ],
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            interaction: { mode: 'index', intersect: false },
-            plugins: {
-                legend: { position: 'top', labels: { color: '#8888a0' } },
-            },
-            scales: {
-                x: { ticks: { color: '#555566' }, grid: { color: 'rgba(255,255,255,0.05)' } },
-                y: { 
-                    type: 'linear', position: 'left', ticks: { color: '#00d4ff' },
-                    title: { display: true, text: 'Cảm biến', color: '#00d4ff' }
-                },
-                y1: { 
-                    type: 'linear', position: 'right', min: 0, max: 100, ticks: { color: '#ffaa00' },
-                    title: { display: true, text: 'Độ sáng (%)', color: '#ffaa00' }
-                },
-            },
-        },
-    });
+// ============ Helper: Lock UI ============
+function lockUI() {
+    state.isInteracting = true;
+    clearTimeout(state.interactionTimeout);
 }
 
-async function refreshChart() {
-    try {
-        const hours = parseInt(elements.chartHours.value);
-        const response = await getSensorHistory(hours);
-        
-        if (response.data && response.data.length > 0) {
-            const labels = response.data.map(item => {
-                const date = new Date(item.timestamp);
-                return date.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
-            });
-            state.chartInstance.data.labels = labels;
-            state.chartInstance.data.datasets[0].data = response.data.map(i => i.sensor_value);
-            state.chartInstance.data.datasets[1].data = response.data.map(i => i.brightness);
-            state.chartInstance.update('none');
-        }
-    } catch (error) { console.error('Error refreshing chart:', error); }
-}
-
-// ============ Toast Notifications ============
-function showToast(message, type = 'info') {
-    const toast = document.createElement('div');
-    toast.className = `toast ${type}`;
-    toast.innerHTML = `<span>${message}</span>`; // Simplified structure
-    elements.toastContainer.appendChild(toast);
-    setTimeout(() => {
-        toast.style.animation = 'slideIn 0.3s ease reverse';
-        setTimeout(() => toast.remove(), 300);
-    }, 3000);
+function unlockUI() {
+    // Đợi 4 giây sau khi thao tác xong mới cho phép Server cập nhật lại
+    // Để đảm bảo dữ liệu cũ đã bị ESP32 ghi đè xong
+    clearTimeout(state.interactionTimeout);
+    state.interactionTimeout = setTimeout(() => {
+        state.isInteracting = false;
+    }, CONFIG.UPDATE_DELAY);
 }
 
 // ============ Polling Functions ============
@@ -307,17 +159,17 @@ function startPolling() {
     if (state.pollInterval) clearInterval(state.pollInterval);
     fetchStatus();
     refreshChart();
-    state.pollInterval = setInterval(async () => { await fetchStatus(); }, CONFIG.POLL_INTERVAL);
+    state.pollInterval = setInterval(fetchStatus, CONFIG.POLL_INTERVAL);
 }
 
 function stopPolling() {
-    if (state.pollInterval) {
-        clearInterval(state.pollInterval);
-        state.pollInterval = null;
-    }
+    if (state.pollInterval) { clearInterval(state.pollInterval); state.pollInterval = null; }
 }
 
 async function fetchStatus() {
+    // Nếu đang bị khóa (đang chỉnh tay) thì bỏ qua lần cập nhật này
+    if (state.isInteracting) return;
+    
     try {
         const status = await getDeviceStatus();
         state.deviceStatus = status;
@@ -325,35 +177,8 @@ async function fetchStatus() {
         updateDeviceUI();
         updateLastUpdated();
     } catch (error) {
-        console.error('Error fetching status:', error);
+        console.error('Polling error:', error);
         setConnectionStatus(false);
-    }
-}
-
-// ============ Auth Functions ============
-function logout() {
-    state.token = null;
-    localStorage.removeItem('access_token');
-    stopPolling();
-    showScreen('login');
-    elements.loginError.classList.remove('show');
-    elements.usernameInput.value = '';
-    elements.passwordInput.value = '';
-}
-
-async function tryAutoLogin() {
-    const savedToken = localStorage.getItem('access_token');
-    if (!savedToken) { showScreen('login'); return; }
-    
-    const isValid = await verifyToken(savedToken);
-    if (isValid) {
-        state.token = savedToken;
-        showScreen('dashboard');
-        initChart();
-        startPolling();
-    } else {
-        localStorage.removeItem('access_token');
-        showScreen('login');
     }
 }
 
@@ -362,88 +187,180 @@ function setupEventListeners() {
     // Login
     elements.loginForm.addEventListener('submit', async (e) => {
         e.preventDefault();
-        const username = elements.usernameInput.value.trim();
-        const password = elements.passwordInput.value;
-        if (!username || !password) return; // Basic validation
+        const u = elements.usernameInput.value.trim();
+        const p = elements.passwordInput.value;
+        if (!u || !p) return;
         
         elements.loginBtn.disabled = true;
         try {
-            const data = await login(username, password);
+            const data = await login(u, p);
             state.token = data.access_token;
             localStorage.setItem('access_token', data.access_token);
             showScreen('dashboard');
             initChart();
             startPolling();
-            showToast('Đăng nhập thành công!', 'success');
-        } catch (error) {
-            elements.loginError.textContent = error.message;
+            showToast('Đăng nhập thành công', 'success');
+        } catch (err) {
+            elements.loginError.textContent = err.message;
             elements.loginError.classList.add('show');
-        } finally {
-            elements.loginBtn.disabled = false;
-        }
+        } finally { elements.loginBtn.disabled = false; }
     });
     
-    // Logout
-    elements.logoutBtn.addEventListener('click', () => { logout(); showToast('Đã đăng xuất', 'info'); });
-    
-    // Power Toggle
+    elements.logoutBtn.addEventListener('click', () => {
+        state.token = null;
+        localStorage.removeItem('access_token');
+        stopPolling();
+        showScreen('login');
+    });
+
+    // --- 1. NÚT NGUỒN (Khắc phục lỗi không tắt được) ---
     elements.powerToggle.addEventListener('click', async () => {
         if (!state.token) return;
+        
+        lockUI(); // Khóa cập nhật từ Server ngay lập tức
+
+        // Logic UI: Đảo ngược trạng thái hiện tại
+        const newState = !state.deviceStatus.is_on;
+        state.deviceStatus.is_on = newState;
+        
+        // Nếu TẮT -> Bắt buộc tắt luôn chế độ Auto trên giao diện
+        if (newState === false) {
+            state.deviceStatus.is_auto_mode = false;
+            state.deviceStatus.brightness = 0;
+            // Cập nhật UI ngay lập tức để người dùng thấy đèn đã tắt
+            elements.powerToggle.classList.remove('on');
+            elements.lightVisual.classList.remove('on');
+            elements.autoToggle.checked = false;
+            elements.modeStatus.textContent = 'Thủ công';
+        } else {
+            // Nếu BẬT -> Hiện sáng
+            elements.powerToggle.classList.add('on');
+            elements.lightVisual.classList.add('on');
+        }
+        
+        // Gửi lệnh xuống Server
         try {
-            const newState = !state.deviceStatus.is_on;
             await controlDevice('TOGGLE_POWER', { state: newState });
             showToast(newState ? 'Đã bật đèn' : 'Đã tắt đèn', 'success');
-            // Cập nhật UI ngay lập tức cho mượt
-            state.deviceStatus.is_on = newState;
-            updateDeviceUI();
-        } catch (error) { showToast(error.message, 'error'); }
-    });
-    
-    // Brightness Slider
-    let brightnessTimeout;
-    elements.brightnessSlider.addEventListener('input', (e) => {
-        const value = parseInt(e.target.value);
-        elements.brightnessLabel.textContent = `${value}%`;
-        elements.sliderFill.style.width = `${value}%`;
-        
-        if (!state.token) return;
-        
-        clearTimeout(brightnessTimeout);
-        brightnessTimeout = setTimeout(async () => {
-            try {
-                await controlDevice('SET_BRIGHTNESS', { value });
-                showToast(`Độ sáng: ${value}%`, 'success');
-            } catch (error) { showToast(error.message, 'error'); }
-        }, 300);
-    });
-    
-    // Auto Toggle (Đơn giản hóa: Chỉ bật/tắt)
-    elements.autoToggle.addEventListener('change', async (e) => {
-        if (!state.token) { e.target.checked = !e.target.checked; return; }
-        try {
-            const enable = e.target.checked;
-            await controlDevice('SET_AUTO', { enable });
-            showToast(enable ? 'Đã bật chế độ tự động' : 'Đã tắt chế độ tự động', 'success');
         } catch (error) {
             showToast(error.message, 'error');
-            e.target.checked = !e.target.checked;
+            // Nếu lỗi thì hoàn tác lại UI
+            state.deviceStatus.is_on = !newState;
+            updateDeviceUI();
+        } finally {
+            unlockUI(); // Giữ khóa UI thêm 4 giây nữa
         }
     });
     
-    // Chart Controls
-    elements.chartHours.addEventListener('change', () => { if (state.token) refreshChart(); });
-    elements.refreshChartBtn.addEventListener('click', () => { if (state.token) refreshChart(); });
-}
+    // --- 2. THANH TRƯỢT (Khắc phục lỗi nhảy số) ---
+    let debounceTimer;
 
-// ============ Initialization ============
-async function init() {
-    elements.dashboardScreen.style.display = 'none';
-    elements.dashboardScreen.classList.add('hidden');
-    elements.loginScreen.style.display = 'flex';
-    elements.loginScreen.classList.remove('hidden');
+    // Khi bắt đầu chạm vào -> Khóa ngay
+    const startInteraction = () => { lockUI(); };
+    elements.brightnessSlider.addEventListener('mousedown', startInteraction);
+    elements.brightnessSlider.addEventListener('touchstart', startInteraction);
+
+    elements.brightnessSlider.addEventListener('input', (e) => {
+        lockUI(); // Đảm bảo luôn khóa khi đang kéo
+        
+        const val = parseInt(e.target.value);
+        
+        // Cập nhật số hiển thị ngay lập tức (Responsive)
+        elements.brightnessLabel.textContent = `${val}%`;
+        elements.sliderFill.style.width = `${val}%`;
+        
+        // Logic: Kéo thanh trượt -> Tự động chuyển sang chế độ Thủ công
+        if (state.deviceStatus.is_auto_mode) {
+             state.deviceStatus.is_auto_mode = false;
+             elements.autoToggle.checked = false;
+             elements.modeStatus.textContent = 'Thủ công';
+             elements.modeStatus.className = 'info-value manual';
+        }
+
+        // Debounce: Chỉ gửi lệnh khi dừng kéo 300ms
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(async () => {
+            try {
+                await controlDevice('SET_BRIGHTNESS', { value: val });
+                state.deviceStatus.brightness = val;
+            } catch (err) { console.error(err); }
+        }, 300);
+    });
+
+    // Khi thả tay ra -> Chờ 4 giây rồi mới mở khóa cập nhật
+    const endInteraction = () => { unlockUI(); };
+    elements.brightnessSlider.addEventListener('mouseup', endInteraction);
+    elements.brightnessSlider.addEventListener('touchend', endInteraction);
+    elements.brightnessSlider.addEventListener('change', endInteraction);
+
+    // --- 3. NÚT AUTO ---
+    elements.autoToggle.addEventListener('change', async (e) => {
+        lockUI();
+        const enable = e.target.checked;
+        
+        state.deviceStatus.is_auto_mode = enable;
+        updateDeviceUI();
+
+        try {
+            await controlDevice('SET_AUTO', { enable });
+            showToast(enable ? 'Bật tự động' : 'Tắt tự động', 'success');
+        } catch (error) {
+            showToast(error.message, 'error');
+            e.target.checked = !enable;
+            state.deviceStatus.is_auto_mode = !enable;
+            updateDeviceUI();
+        } finally {
+            unlockUI();
+        }
+    });
     
-    setupEventListeners();
-    await tryAutoLogin();
+    elements.chartHours.addEventListener('change', () => state.token && refreshChart());
+    elements.refreshChartBtn.addEventListener('click', () => state.token && refreshChart());
 }
 
-document.addEventListener('DOMContentLoaded', init);
+// ============ Init ============
+function initChart() {
+    if (state.chartInstance) state.chartInstance.destroy();
+    const ctx = elements.sensorChart.getContext('2d');
+    state.chartInstance = new Chart(ctx, {
+        type: 'line',
+        data: { labels: [], datasets: [
+            { label: 'Cảm biến', data: [], borderColor: '#00d4ff', backgroundColor: 'rgba(0,212,255,0.1)', fill: true, tension: 0.4 },
+            { label: 'Độ sáng (%)', data: [], borderColor: '#ffaa00', backgroundColor: 'rgba(255,170,0,0.1)', fill: true, tension: 0.4, yAxisID: 'y1' }
+        ]},
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            interaction: { mode: 'index', intersect: false },
+            scales: {
+                y: { position: 'left', title: {display:true, text:'Sensor'} },
+                y1: { position: 'right', min:0, max:100, title: {display:true, text:'%'} }
+            }
+        }
+    });
+}
+async function refreshChart() {
+    try {
+        const h = parseInt(elements.chartHours.value);
+        const res = await getSensorHistory(h);
+        if (res.data?.length) {
+            state.chartInstance.data.labels = res.data.map(i => new Date(i.timestamp).toLocaleTimeString('vi-VN',{hour:'2-digit',minute:'2-digit'}));
+            state.chartInstance.data.datasets[0].data = res.data.map(i => i.sensor_value);
+            state.chartInstance.data.datasets[1].data = res.data.map(i => i.brightness);
+            state.chartInstance.update('none');
+        }
+    } catch (e) { console.error(e); }
+}
+
+document.addEventListener('DOMContentLoaded', async () => {
+    setupEventListeners();
+    const savedToken = localStorage.getItem('access_token');
+    if (savedToken) {
+        try {
+            state.token = savedToken;
+            await getDeviceStatus(); 
+            showScreen('dashboard');
+            initChart();
+            startPolling();
+        } catch { logout(); }
+    }
+});
