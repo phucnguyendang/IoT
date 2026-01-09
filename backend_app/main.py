@@ -19,7 +19,7 @@ app = FastAPI(
 # CORS - Allow frontend to access API
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allow all origins for development
+    allow_origins=["*"],  
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -31,6 +31,15 @@ app.include_router(control.router)
 
 # Frontend path
 frontend_path = Path(__file__).parent.parent / "frontend"
+
+# ============================================================
+# [THÊM ĐOẠN NÀY] ĐỂ KHAI BÁO THƯ MỤC FONTS
+# ============================================================
+# Dòng này nối đường dẫn http://localhost:8000/fonts/... 
+# vào thư mục thật trên ổ cứng: .../frontend/fonts/
+app.mount("/fonts", StaticFiles(directory=str(frontend_path / "fonts")), name="fonts")
+# ============================================================
+
 
 @app.on_event("startup")
 async def startup_event():

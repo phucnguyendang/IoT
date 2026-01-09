@@ -111,12 +111,12 @@ class MQTTService:
                     id=1,
                     light_threshold_low=300,    # Dưới 300 là SÁNG QUÁ -> Cần tắt đèn
                     light_threshold_high=1200,  # Trên 1200 là TỐI -> Cần bật Auto
-                    auto_brightness=80          # (Thông số này giờ chỉ để tham khảo hoặc lưu trữ)
+                    auto_brightness=80          
                 )
                 db.add(user_settings)
                 db.commit()
             
-            # 2. Gán biến cho dễ đọc
+        
             sensor_value = device.sensor_value
             threshold_turn_off = user_settings.light_threshold_low   # Ngưỡng sáng (để tắt)
             threshold_turn_on = user_settings.light_threshold_high   # Ngưỡng tối (để bật Auto)
@@ -135,7 +135,7 @@ class MQTTService:
             
             # === TRƯỜNG HỢP 2: TRỜI TỐI -> BẬT CHẾ ĐỘ AUTO ===
             # Điều kiện: (Sensor lớn hơn ngưỡng cao) VÀ (Đèn đang tắt HOẶC Đang không ở chế độ Auto)
-            # Tại sao? Vì nếu đèn đang sáng và đang ở Auto rồi thì cứ để ESP32 tự chỉnh, Server không cần can thiệp nữa.
+            # Nếu đèn đang sáng và đang ở Auto rồi thì cứ để ESP32 tự chỉnh, Server không cần can thiệp nữa.
             elif sensor_value > threshold_turn_on and (not device.is_on or not device.is_auto_mode):
                 print(f"🌙 [AUTO] Trời tối (Sensor {sensor_value} > {threshold_turn_on}) -> Kích hoạt ESP32 AUTO MODE.")
                 
@@ -155,11 +155,11 @@ class MQTTService:
 
     def connect(self):
         try:
-            # Chỉ set user/pass nếu trong settings có giá trị (Localhost thường để None)
+           
             if settings.MQTT_USERNAME and settings.MQTT_PASSWORD:
                 self.client.username_pw_set(settings.MQTT_USERNAME, settings.MQTT_PASSWORD)
             
-            # --- QUAN TRỌNG: Đã XÓA dòng self.client.tls_set() ---
+
             
             # Kết nối vào Broker
             self.client.connect(settings.MQTT_BROKER, settings.MQTT_PORT, 60)

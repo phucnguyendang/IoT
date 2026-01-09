@@ -1,5 +1,5 @@
 /**
- * IoT Smart Light - Frontend Application (Final Stable Version)
+ * IoT Smart Light - Frontend Application (Cleaned Version)
  * ======================================
  */
 
@@ -7,8 +7,7 @@
 const CONFIG = {
     API_URL: 'http://127.0.0.1:8000',
     POLL_INTERVAL: 2000, // Cập nhật trạng thái mỗi 2 giây
-    CHART_REFRESH_INTERVAL: 30000,
-    // QUAN TRỌNG: Thời gian chờ phản hồi từ ESP32 (tăng lên 4s để tránh nhảy số)
+    // ĐÃ XÓA: CHART_REFRESH_INTERVAL
     UPDATE_DELAY: 4000 
 };
 
@@ -23,7 +22,7 @@ const state = {
         is_auto_mode: false,
     },
     pollInterval: null,
-    chartInstance: null,
+    // ĐÃ XÓA: chartInstance
     
     // Cờ chặn cập nhật khi người dùng đang thao tác
     isInteracting: false, 
@@ -52,9 +51,7 @@ const elements = {
     brightnessLabel: document.getElementById('brightness-label'),
     sliderFill: document.getElementById('slider-fill'),
     autoToggle: document.getElementById('auto-toggle'),
-    chartHours: document.getElementById('chart-hours'),
-    refreshChartBtn: document.getElementById('refresh-chart-btn'),
-    sensorChart: document.getElementById('sensor-chart'),
+    // ĐÃ XÓA: chartHours, refreshChartBtn, sensorChart
     toastContainer: document.getElementById('toast-container'),
 };
 
@@ -89,9 +86,7 @@ async function controlDevice(action, options = {}) {
     return await apiRequest('/api/device/control', { method: 'POST', body: JSON.stringify({ action, ...options }) });
 }
 
-async function getSensorHistory(hours = 24) {
-    return await apiRequest(`/api/device/history?hours=${hours}&limit=500`);
-}
+// ĐÃ XÓA: getSensorHistory()
 
 // ============ UI Update Functions ============
 function showScreen(screenName) {
@@ -158,7 +153,7 @@ function unlockUI() {
 function startPolling() {
     if (state.pollInterval) clearInterval(state.pollInterval);
     fetchStatus();
-    refreshChart();
+    // ĐÃ XÓA: refreshChart();
     state.pollInterval = setInterval(fetchStatus, CONFIG.POLL_INTERVAL);
 }
 
@@ -197,7 +192,7 @@ function setupEventListeners() {
             state.token = data.access_token;
             localStorage.setItem('access_token', data.access_token);
             showScreen('dashboard');
-            initChart();
+            // ĐÃ XÓA: initChart();
             startPolling();
             showToast('Đăng nhập thành công', 'success');
         } catch (err) {
@@ -314,42 +309,11 @@ function setupEventListeners() {
         }
     });
     
-    elements.chartHours.addEventListener('change', () => state.token && refreshChart());
-    elements.refreshChartBtn.addEventListener('click', () => state.token && refreshChart());
+    // ĐÃ XÓA: Các EventListener của chart
 }
 
 // ============ Init ============
-function initChart() {
-    if (state.chartInstance) state.chartInstance.destroy();
-    const ctx = elements.sensorChart.getContext('2d');
-    state.chartInstance = new Chart(ctx, {
-        type: 'line',
-        data: { labels: [], datasets: [
-            { label: 'Cảm biến', data: [], borderColor: '#00d4ff', backgroundColor: 'rgba(0,212,255,0.1)', fill: true, tension: 0.4 },
-            { label: 'Độ sáng (%)', data: [], borderColor: '#ffaa00', backgroundColor: 'rgba(255,170,0,0.1)', fill: true, tension: 0.4, yAxisID: 'y1' }
-        ]},
-        options: {
-            responsive: true, maintainAspectRatio: false,
-            interaction: { mode: 'index', intersect: false },
-            scales: {
-                y: { position: 'left', title: {display:true, text:'Sensor'} },
-                y1: { position: 'right', min:0, max:100, title: {display:true, text:'%'} }
-            }
-        }
-    });
-}
-async function refreshChart() {
-    try {
-        const h = parseInt(elements.chartHours.value);
-        const res = await getSensorHistory(h);
-        if (res.data?.length) {
-            state.chartInstance.data.labels = res.data.map(i => new Date(i.timestamp).toLocaleTimeString('vi-VN',{hour:'2-digit',minute:'2-digit'}));
-            state.chartInstance.data.datasets[0].data = res.data.map(i => i.sensor_value);
-            state.chartInstance.data.datasets[1].data = res.data.map(i => i.brightness);
-            state.chartInstance.update('none');
-        }
-    } catch (e) { console.error(e); }
-}
+// ĐÃ XÓA: function initChart(), function refreshChart()
 
 document.addEventListener('DOMContentLoaded', async () => {
     setupEventListeners();
@@ -359,7 +323,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             state.token = savedToken;
             await getDeviceStatus(); 
             showScreen('dashboard');
-            initChart();
+            // ĐÃ XÓA: initChart();
             startPolling();
         } catch { logout(); }
     }

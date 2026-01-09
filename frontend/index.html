@@ -4,13 +4,12 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>IoT Smart Light - Dashboard</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <link rel="stylesheet" href="fonts/fonts.css">
+    
     <link rel="stylesheet" href="styles.css">
     <style>
-        /* Thêm CSS inline nhỏ để căn chỉnh lại bố cục cho đẹp hơn */
+        /* CSS inline gốc của bạn */
         .dashboard-main {
             display: flex;
             flex-direction: column;
@@ -20,14 +19,12 @@
             padding: 1.5rem;
         }
 
-        /* Chia cột cho hàng trên cùng (Status + Control) */
         .top-row {
             display: grid;
-            grid-template-columns: 1fr 1fr; /* Chia đôi màn hình */
+            grid-template-columns: 1fr 1fr;
             gap: 1.5rem;
         }
 
-        /* Trên điện thoại thì xếp chồng lên nhau */
         @media (max-width: 768px) {
             .top-row {
                 grid-template-columns: 1fr;
@@ -192,29 +189,8 @@
                     </div>
                 </section>
             </div>
-
-            <section class="card chart-card">
-                <div class="card-header">
-                    <h2>Biểu đồ hoạt động</h2>
-                    <div class="chart-controls">
-                        <select id="chart-hours" class="select-input">
-                            <option value="1">1 giờ qua</option>
-                            <option value="6">6 giờ qua</option>
-                            <option value="24" selected>24 giờ qua</option>
-                        </select>
-                        <button id="refresh-chart-btn" class="btn-icon" title="Làm mới dữ liệu">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <path d="M23 4v6h-6M1 20v-6h6"/>
-                                <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>
-                            </svg>
-                        </button>
-                    </div>
-                </div>
-                <div class="chart-container" style="height: 350px;">
-                    <canvas id="sensor-chart"></canvas>
-                </div>
-            </section>
-        </main>
+            
+            </main>
     </div>
 
     <div id="toast-container"></div>
