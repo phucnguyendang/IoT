@@ -22,12 +22,6 @@ class MQTTService:
             print(f"Failed to connect, return code {rc}")
 
     def on_message(self, client, userdata, msg):
-        """
-        Xử lý message từ ESP32:
-        1. Cập nhật trạng thái thiết bị (device_state)
-        2. Lưu lịch sử cảm biến (sensor_history)
-        3. Xử lý logic tự động (nếu is_auto_mode = True)
-        """
         try:
             payload = msg.payload.decode()
             print(f"[MQTT] Received message from device: {payload}")
@@ -41,10 +35,7 @@ class MQTTService:
                     device = DeviceState(id=1)
                     db.add(device)
 
-                # Lưu giá trị cũ để so sánh
-                old_is_on = device.is_on
-                old_is_auto = device.is_auto_mode
-                
+                # ... (Các dòng gán device.is_on, brightness... giữ nguyên) ...
                 if "is_on" in data:
                     device.is_on = data["is_on"]
                 if "brightness" in data:
@@ -54,37 +45,29 @@ class MQTTService:
                 if "is_auto_mode" in data:
                     device.is_auto_mode = data["is_auto_mode"]
                 
-                # Xử lý timestamp
-                record_time = datetime.utcnow()
-                if "timestamp" in data:
-                    try:
-                        ts = data["timestamp"]
-                        if ts > 10000000000:
-                            ts = ts / 1000
-                        record_time = datetime.fromtimestamp(ts)
-                    except Exception as e:
-                        print(f"[MQTT] Error parsing timestamp: {e}")
+                # === SỬA LẠI PHẦN NÀY ===
+                # Thay vì lấy timestamp từ ESP32 (là uptime giả), ta lấy giờ hệ thống của Server
+                # datetime.now() sẽ lấy giờ theo múi giờ máy tính của bạn (Việt Nam)
+                record_time = datetime.now() 
                 
+                # Cập nhật thời gian vào bảng DeviceState
                 device.last_updated = record_time
                 db.commit()
                 print("[MQTT] Device state updated!")
 
                 # === 2. Lưu lịch sử cảm biến ===
+                # Dùng chính record_time vừa tạo để lưu vào lịch sử
+                # Đảm bảo biểu đồ sẽ vẽ đúng thời gian thực tế
                 history = SensorHistory(
                     sensor_value=device.sensor_value,
                     brightness=device.brightness,
                     is_on=device.is_on,
                     is_auto_mode=device.is_auto_mode,
-                    timestamp=record_time
+                    timestamp=record_time 
                 )
                 db.add(history)
                 db.commit()
-                print("[MQTT] Sensor history saved!")
-
-                # === 3. Xử lý logic tự động trên Backend ===
-                # Chỉ xử lý nếu đang ở chế độ AUTO
-                # if device.is_auto_mode:
-                #     self._process_auto_logic(db, device)
+                print(f"[MQTT] Sensor history saved at {record_time}!")
 
             except Exception as db_err:
                 print(f"[MQTT] Database Error: {db_err}")
