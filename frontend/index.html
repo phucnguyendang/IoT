@@ -6,8 +6,10 @@
     <title>IoT Smart Light - Dashboard</title>
     
     <link rel="stylesheet" href="fonts/fonts.css">
-    
     <link rel="stylesheet" href="styles.css">
+    
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
     <style>
         /* CSS inline gốc của bạn */
         .dashboard-main {
@@ -29,6 +31,33 @@
             .top-row {
                 grid-template-columns: 1fr;
             }
+        }
+
+        /* [THÊM] CSS cho phần chọn ngày và nút xem */
+        .chart-controls {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        .date-input {
+            background: #2a2d3e;
+            border: 1px solid #3f445e;
+            color: #fff;
+            padding: 5px 10px;
+            border-radius: 6px;
+            font-family: inherit;
+        }
+        .btn-view {
+            background: #00d2ff;
+            border: none;
+            padding: 6px 12px;
+            border-radius: 6px;
+            color: #000;
+            font-weight: 600;
+            cursor: pointer;
+        }
+        .btn-view:hover {
+            background: #33ddff;
         }
     </style>
 </head>
@@ -89,7 +118,6 @@
 
         <main class="dashboard-main">
             <div class="top-row">
-                
                 <section class="card status-card">
                     <div class="card-header">
                         <h2>Trạng thái thiết bị</h2>
@@ -122,24 +150,15 @@
 
                         <div class="status-info">
                             <div class="info-row">
-                                <span class="info-label">
-                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
-                                    Nguồn điện
-                                </span>
+                                <span class="info-label">Nguồn điện</span>
                                 <span class="info-value" id="power-status">--</span>
                             </div>
                             <div class="info-row">
-                                <span class="info-label">
-                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-                                    Chế độ
-                                </span>
+                                <span class="info-label">Chế độ</span>
                                 <span class="info-value" id="mode-status">--</span>
                             </div>
                             <div class="info-row">
-                                <span class="info-label">
-                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
-                                    Cảm biến
-                                </span>
+                                <span class="info-label">Cảm biến</span>
                                 <span class="info-value" id="sensor-status">--</span>
                             </div>
                         </div>
@@ -190,11 +209,23 @@
                 </section>
             </div>
             
-            </main>
+            <section class="card chart-card" style="margin-top: 20px;">
+                <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+                    <h2>Biểu đồ hoạt động</h2>
+                    <div class="chart-controls">
+                        <input type="date" id="history-date" class="date-input">
+                        <button id="btn-load-history" class="btn-view">Xem</button>
+                    </div>
+                </div>
+                <div class="chart-container" style="position: relative; height: 350px; width: 100%;">
+                    <canvas id="historyChart"></canvas>
+                </div>
+            </section>
+
+        </main>
     </div>
 
     <div id="toast-container"></div>
-
     <script src="app.js"></script>
 </body>
 </html>

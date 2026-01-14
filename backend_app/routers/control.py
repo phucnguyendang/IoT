@@ -17,6 +17,8 @@ from ..schemas.device_schema import (
 )
 from ..mqtt_service import mqtt_service
 from .auth import get_current_user
+from sqlalchemy import func
+from datetime import date
 
 router = APIRouter(
     prefix="/api/device",
@@ -238,3 +240,27 @@ async def get_dashboard(
         settings=UserSettingsResponse.model_validate(settings),
         recent_history_count=history_count
     )
+
+@router.get("/history/by-date")
+def get_history_by_date(
+    target_date: date = Query(..., description="Chọn ngày (YYYY-MM-DD)"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Trả về dữ liệu để vẽ biểu đồ cho một ngày cụ thể.
+    """
+    # Lọc các bản ghi có ngày trùng với target_date
+    records = db.query(SensorHistory).filter(
+        func.date(SensorHistory.timestamp) == target_date
+    ).order_by(SensorHistory.timestamp.asc()).all()
+
+    # Chuyển đổi dữ liệu cho Frontend dễ dùng
+    return [
+        {
+            "timestamp": r.timestamp.strftime("%H:%M:%S"), # Chỉ lấy giờ:phút:giây
+            "sensor_value": r.sensor_value,
+            "brightness": r.brightness
+        }
+        for r in records
+    ]

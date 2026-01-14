@@ -1,13 +1,12 @@
 /**
- * IoT Smart Light - Frontend Application (Cleaned Version)
+ * IoT Smart Light - Frontend Application (Live Chart & Smooth UI Version)
  * ======================================
  */
 
 // ============ Configuration ============
 const CONFIG = {
     API_URL: 'http://127.0.0.1:8000',
-    POLL_INTERVAL: 2000, // Cập nhật trạng thái mỗi 2 giây
-    // ĐÃ XÓA: CHART_REFRESH_INTERVAL
+    POLL_INTERVAL: 2000, 
     UPDATE_DELAY: 4000 
 };
 
@@ -22,9 +21,10 @@ const state = {
         is_auto_mode: false,
     },
     pollInterval: null,
-    // ĐÃ XÓA: chartInstance
     
-    // Cờ chặn cập nhật khi người dùng đang thao tác
+    chartInstance: null,
+
+    // Cờ chặn cập nhật thanh trượt khi người dùng đang thao tác
     isInteracting: false, 
     interactionTimeout: null
 };
@@ -40,19 +40,25 @@ const elements = {
     loginBtn: document.getElementById('login-btn'),
     connectionStatus: document.getElementById('connection-status'),
     logoutBtn: document.getElementById('logout-btn'),
+    
     lightVisual: document.getElementById('light-visual'),
     brightnessDisplay: document.getElementById('brightness-display'),
     powerStatus: document.getElementById('power-status'),
     modeStatus: document.getElementById('mode-status'),
     sensorStatus: document.getElementById('sensor-status'),
     lastUpdated: document.getElementById('last-updated'),
+    
     powerToggle: document.getElementById('power-toggle'),
     brightnessSlider: document.getElementById('brightness-slider'),
     brightnessLabel: document.getElementById('brightness-label'),
     sliderFill: document.getElementById('slider-fill'),
     autoToggle: document.getElementById('auto-toggle'),
-    // ĐÃ XÓA: chartHours, refreshChartBtn, sensorChart
+    
     toastContainer: document.getElementById('toast-container'),
+
+    historyDateInput: document.getElementById('history-date'),
+    loadHistoryBtn: document.getElementById('btn-load-history'),
+    chartCanvas: document.getElementById('historyChart'),
 };
 
 // ============ API Functions ============
@@ -80,13 +86,15 @@ async function login(username, password) {
     return await apiRequest('/token', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: formData });
 }
 
-async function getDeviceStatus() { return await apiRequest('/api/device/status'); }
+async function getDeviceStatus() { return await apiRequest(`/api/device/status?t=${Date.now()}`); }
 
 async function controlDevice(action, options = {}) {
     return await apiRequest('/api/device/control', { method: 'POST', body: JSON.stringify({ action, ...options }) });
 }
 
-// ĐÃ XÓA: getSensorHistory()
+async function getHistoryByDate(dateStr) {
+    return await apiRequest(`/api/device/history/by-date?target_date=${dateStr}`);
+}
 
 // ============ UI Update Functions ============
 function showScreen(screenName) {
@@ -101,15 +109,11 @@ function setConnectionStatus(connected) {
 }
 
 function updateDeviceUI() {
-    // === CHỐNG NHẢY SỐ ===
-    // Nếu người dùng đang thao tác hoặc vừa thao tác xong -> KHÔNG cập nhật từ Server
-    if (state.isInteracting) return;
-
     const { is_on, brightness, sensor_value, is_auto_mode } = state.deviceStatus;
     
-    // Cập nhật trạng thái đèn
-    elements.lightVisual.classList.toggle('on', is_on);
-    elements.brightnessDisplay.textContent = brightness;
+    // --- PHẦN 1: LUÔN CẬP NHẬT (Real-time) ---
+    // Cập nhật Cảm biến ngay lập tức dù đang làm gì
+    elements.sensorStatus.textContent = sensor_value;
     
     elements.powerStatus.textContent = is_on ? 'Đang bật' : 'Đang tắt';
     elements.powerStatus.className = `info-value ${is_on ? 'on' : 'off'}`;
@@ -117,43 +121,178 @@ function updateDeviceUI() {
     elements.modeStatus.textContent = is_auto_mode ? 'Tự động' : 'Thủ công';
     elements.modeStatus.className = `info-value ${is_auto_mode ? 'auto' : 'manual'}`;
     
-    elements.sensorStatus.textContent = sensor_value;
-    
-    // Cập nhật nút nguồn và slider
+    elements.lightVisual.classList.toggle('on', is_on);
     elements.powerToggle.classList.toggle('on', is_on);
-    
-    // Chỉ cập nhật slider khi người dùng KHÔNG chạm vào nó
-    elements.brightnessSlider.value = brightness;
-    elements.brightnessLabel.textContent = `${brightness}%`;
-    elements.sliderFill.style.width = `${brightness}%`;
-    
     elements.autoToggle.checked = is_auto_mode;
+
+    // --- PHẦN 2: CẬP NHẬT CÓ ĐIỀU KIỆN (Thanh trượt) ---
+    // Chỉ cập nhật Slider nếu người dùng KHÔNG đang chạm vào nó
+    if (!state.isInteracting) {
+        elements.brightnessDisplay.textContent = brightness;
+        elements.brightnessSlider.value = brightness;
+        elements.brightnessLabel.textContent = `${brightness}%`;
+        elements.sliderFill.style.width = `${brightness}%`;
+    }
 }
 
 function updateLastUpdated() {
     elements.lastUpdated.textContent = new Date().toLocaleTimeString('vi-VN');
 }
 
-// ============ Helper: Lock UI ============
+function showToast(message, type = 'info') {
+    const toast = document.createElement('div');
+    toast.className = `toast ${type}`;
+    toast.textContent = message;
+    elements.toastContainer.appendChild(toast);
+    setTimeout(() => toast.classList.add('show'), 10);
+    setTimeout(() => {
+        toast.classList.remove('show');
+        setTimeout(() => toast.remove(), 300);
+    }, 3000);
+}
+
+function logout() {
+    state.token = null;
+    localStorage.removeItem('access_token');
+    stopPolling();
+    showScreen('login');
+}
+
 function lockUI() {
     state.isInteracting = true;
     clearTimeout(state.interactionTimeout);
 }
 
 function unlockUI() {
-    // Đợi 4 giây sau khi thao tác xong mới cho phép Server cập nhật lại
-    // Để đảm bảo dữ liệu cũ đã bị ESP32 ghi đè xong
     clearTimeout(state.interactionTimeout);
     state.interactionTimeout = setTimeout(() => {
         state.isInteracting = false;
     }, CONFIG.UPDATE_DELAY);
 }
 
+// ============ CHART FUNCTIONS ============
+async function loadAndDrawChart() {
+    const dateStr = elements.historyDateInput.value;
+    if (!dateStr) return showToast('Vui lòng chọn ngày', 'error');
+
+    try {
+        const data = await getHistoryByDate(dateStr);
+        if (!data || data.length === 0) {
+            showToast('Không có dữ liệu cho ngày này', 'info');
+            if (state.chartInstance) {
+                state.chartInstance.data.labels = [];
+                state.chartInstance.data.datasets.forEach((dataset) => { dataset.data = []; });
+                state.chartInstance.update();
+            }
+            return;
+        }
+        drawChart(data);
+        showToast('Đã tải dữ liệu lịch sử', 'success');
+    } catch (error) {
+        showToast('Lỗi tải biểu đồ', 'error');
+        console.error(error);
+    }
+}
+
+function drawChart(data) {
+    const labels = data.map(item => item.timestamp);
+    const sensorData = data.map(item => item.sensor_value);
+    const brightnessData = data.map(item => item.brightness);
+
+    const ctx = elements.chartCanvas.getContext('2d');
+
+    if (state.chartInstance) {
+        state.chartInstance.destroy();
+    }
+
+    state.chartInstance = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [
+                {
+                    label: 'Cảm biến (Lux)',
+                    data: sensorData,
+                    borderColor: '#00d2ff',
+                    backgroundColor: 'rgba(0, 210, 255, 0.1)',
+                    yAxisID: 'y',
+                    tension: 0.4,
+                    pointRadius: 0
+                },
+                {
+                    label: 'Độ sáng đèn (%)',
+                    data: brightnessData,
+                    borderColor: '#ffaa00',
+                    backgroundColor: 'rgba(255, 170, 0, 0.2)',
+                    yAxisID: 'y1',
+                    tension: 0.4,
+                    fill: true,
+                    pointRadius: 0
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: {
+                mode: 'index',
+                intersect: false,
+            },
+            scales: {
+                y: {
+                    type: 'linear',
+                    display: true,
+                    position: 'left',
+                    title: { display: true, text: 'Giá trị cảm biến' }
+                },
+                y1: {
+                    type: 'linear',
+                    display: true,
+                    position: 'right',
+                    title: { display: true, text: 'Độ sáng (%)' },
+                    grid: { drawOnChartArea: false },
+                    min: 0,
+                    max: 100
+                }
+            },
+            animation: false // Tắt hiệu ứng vẽ lại để cập nhật live mượt hơn
+        }
+    });
+}
+
+// [MỚI] Hàm cập nhật biểu đồ thời gian thực
+function updateChartLive() {
+    // Chỉ cập nhật nếu đang có biểu đồ và đang xem ngày hôm nay
+    if (!state.chartInstance) return;
+
+    const selectedDate = elements.historyDateInput.value;
+    const today = new Date().toISOString().split('T')[0];
+
+    if (selectedDate === today) {
+        const now = new Date();
+        const timeStr = now.toLocaleTimeString('vi-VN', {hour12: false}); // HH:MM:SS
+        
+        // Thêm dữ liệu mới vào cuối mảng
+        state.chartInstance.data.labels.push(timeStr);
+        state.chartInstance.data.datasets[0].data.push(state.deviceStatus.sensor_value);
+        state.chartInstance.data.datasets[1].data.push(state.deviceStatus.brightness);
+
+        // Giới hạn số lượng điểm (tùy chọn, ví dụ giữ 1000 điểm cuối để không bị lag)
+        // if (state.chartInstance.data.labels.length > 2000) {
+        //     state.chartInstance.data.labels.shift();
+        //     state.chartInstance.data.datasets[0].data.shift();
+        //     state.chartInstance.data.datasets[1].data.shift();
+        // }
+
+        // Vẽ lại biểu đồ (chế độ 'none' để không có animation giật cục)
+        state.chartInstance.update('none');
+    }
+}
+
 // ============ Polling Functions ============
 function startPolling() {
     if (state.pollInterval) clearInterval(state.pollInterval);
     fetchStatus();
-    // ĐÃ XÓA: refreshChart();
     state.pollInterval = setInterval(fetchStatus, CONFIG.POLL_INTERVAL);
 }
 
@@ -162,15 +301,18 @@ function stopPolling() {
 }
 
 async function fetchStatus() {
-    // Nếu đang bị khóa (đang chỉnh tay) thì bỏ qua lần cập nhật này
-    if (state.isInteracting) return;
+    // [SỬA ĐỔI QUAN TRỌNG]: Không return ngay lập tức nữa
+    // if (state.isInteracting) return; <--- Đã bỏ dòng này
     
     try {
         const status = await getDeviceStatus();
         state.deviceStatus = status;
+        
         setConnectionStatus(true);
-        updateDeviceUI();
+        updateDeviceUI();     // Hàm này đã được sửa để xử lý isInteracting bên trong
         updateLastUpdated();
+        updateChartLive();    // [MỚI] Gọi hàm cập nhật biểu đồ
+        
     } catch (error) {
         console.error('Polling error:', error);
         setConnectionStatus(false);
@@ -192,7 +334,11 @@ function setupEventListeners() {
             state.token = data.access_token;
             localStorage.setItem('access_token', data.access_token);
             showScreen('dashboard');
-            // ĐÃ XÓA: initChart();
+            
+            const today = new Date().toISOString().split('T')[0];
+            elements.historyDateInput.value = today;
+            loadAndDrawChart();
+
             startPolling();
             showToast('Đăng nhập thành công', 'success');
         } catch (err) {
@@ -208,71 +354,61 @@ function setupEventListeners() {
         showScreen('login');
     });
 
-    // --- 1. NÚT NGUỒN (Khắc phục lỗi không tắt được) ---
+    // --- 1. NÚT NGUỒN ---
     elements.powerToggle.addEventListener('click', async () => {
         if (!state.token) return;
-        
-        lockUI(); // Khóa cập nhật từ Server ngay lập tức
+        lockUI(); 
 
-        // Logic UI: Đảo ngược trạng thái hiện tại
         const newState = !state.deviceStatus.is_on;
         state.deviceStatus.is_on = newState;
         
-        // Nếu TẮT -> Bắt buộc tắt luôn chế độ Auto trên giao diện
+        // Cập nhật UI ngay
         if (newState === false) {
             state.deviceStatus.is_auto_mode = false;
             state.deviceStatus.brightness = 0;
-            // Cập nhật UI ngay lập tức để người dùng thấy đèn đã tắt
-            elements.powerToggle.classList.remove('on');
-            elements.lightVisual.classList.remove('on');
-            elements.autoToggle.checked = false;
-            elements.modeStatus.textContent = 'Thủ công';
-        } else {
-            // Nếu BẬT -> Hiện sáng
-            elements.powerToggle.classList.add('on');
-            elements.lightVisual.classList.add('on');
-        }
-        
-        // Gửi lệnh xuống Server
+            // Reset hiển thị về 0
+            elements.brightnessDisplay.textContent = '0';
+            elements.brightnessSlider.value = 0;
+            elements.sliderFill.style.width = '0%';
+            elements.brightnessLabel.textContent = '0%';
+        } 
+        updateDeviceUI();
+
         try {
             await controlDevice('TOGGLE_POWER', { state: newState });
             showToast(newState ? 'Đã bật đèn' : 'Đã tắt đèn', 'success');
         } catch (error) {
             showToast(error.message, 'error');
-            // Nếu lỗi thì hoàn tác lại UI
             state.deviceStatus.is_on = !newState;
             updateDeviceUI();
         } finally {
-            unlockUI(); // Giữ khóa UI thêm 4 giây nữa
+            unlockUI();
         }
     });
     
-    // --- 2. THANH TRƯỢT (Khắc phục lỗi nhảy số) ---
+    // --- 2. THANH TRƯỢT ---
     let debounceTimer;
 
-    // Khi bắt đầu chạm vào -> Khóa ngay
     const startInteraction = () => { lockUI(); };
     elements.brightnessSlider.addEventListener('mousedown', startInteraction);
     elements.brightnessSlider.addEventListener('touchstart', startInteraction);
 
     elements.brightnessSlider.addEventListener('input', (e) => {
-        lockUI(); // Đảm bảo luôn khóa khi đang kéo
-        
+        lockUI(); 
         const val = parseInt(e.target.value);
         
-        // Cập nhật số hiển thị ngay lập tức (Responsive)
+        // Cập nhật số hiển thị ngay (Client-side feedback)
         elements.brightnessLabel.textContent = `${val}%`;
         elements.sliderFill.style.width = `${val}%`;
-        
-        // Logic: Kéo thanh trượt -> Tự động chuyển sang chế độ Thủ công
+        elements.brightnessDisplay.textContent = val;
+
         if (state.deviceStatus.is_auto_mode) {
              state.deviceStatus.is_auto_mode = false;
-             elements.autoToggle.checked = false;
-             elements.modeStatus.textContent = 'Thủ công';
-             elements.modeStatus.className = 'info-value manual';
+             // Cập nhật nhanh trạng thái
+             state.deviceStatus.is_auto_mode = false;
+             updateDeviceUI();
         }
 
-        // Debounce: Chỉ gửi lệnh khi dừng kéo 300ms
         clearTimeout(debounceTimer);
         debounceTimer = setTimeout(async () => {
             try {
@@ -282,7 +418,6 @@ function setupEventListeners() {
         }, 300);
     });
 
-    // Khi thả tay ra -> Chờ 4 giây rồi mới mở khóa cập nhật
     const endInteraction = () => { unlockUI(); };
     elements.brightnessSlider.addEventListener('mouseup', endInteraction);
     elements.brightnessSlider.addEventListener('touchend', endInteraction);
@@ -301,20 +436,17 @@ function setupEventListeners() {
             showToast(enable ? 'Bật tự động' : 'Tắt tự động', 'success');
         } catch (error) {
             showToast(error.message, 'error');
-            e.target.checked = !enable;
-            state.deviceStatus.is_auto_mode = !enable;
-            updateDeviceUI();
+            updateDeviceUI(); // Revert UI
         } finally {
             unlockUI();
         }
     });
     
-    // ĐÃ XÓA: Các EventListener của chart
+    // --- 4. BIỂU ĐỒ ---
+    elements.loadHistoryBtn.addEventListener('click', loadAndDrawChart);
 }
 
 // ============ Init ============
-// ĐÃ XÓA: function initChart(), function refreshChart()
-
 document.addEventListener('DOMContentLoaded', async () => {
     setupEventListeners();
     const savedToken = localStorage.getItem('access_token');
@@ -323,7 +455,11 @@ document.addEventListener('DOMContentLoaded', async () => {
             state.token = savedToken;
             await getDeviceStatus(); 
             showScreen('dashboard');
-            // ĐÃ XÓA: initChart();
+            
+            const today = new Date().toISOString().split('T')[0];
+            elements.historyDateInput.value = today;
+            loadAndDrawChart();
+
             startPolling();
         } catch { logout(); }
     }
