@@ -255,7 +255,6 @@ def get_history_by_date(
         func.date(SensorHistory.timestamp) == target_date
     ).order_by(SensorHistory.timestamp.asc()).all()
 
-    # Chuyển đổi dữ liệu cho Frontend dễ dùng
     return [
         {
             "timestamp": r.timestamp.strftime("%H:%M:%S"), # Chỉ lấy giờ:phút:giây
